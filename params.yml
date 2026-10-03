@@ -1,0 +1,39 @@
+data:
+  dir: "/opt/airflow/data"
+
+  raw_path: "/opt/airflow/data/raw/users_churn_raw.parquet"
+
+  transformed_path: "/opt/airflow/data/processed/users_churn_transformed.parquet"
+
+  final_path: "/opt/airflow/data/users_churn_sprint1.parquet"
+
+
+connections:
+  source_db: "source_db"
+
+
+features:
+  categorical:
+    - type
+    - paperless_billing
+    - payment_method
+    - internet_service
+    - online_security
+    - online_backup
+    - device_protection
+    - tech_support
+    - streaming_tv
+    - streaming_movies
+    - gender
+    - partner
+    - dependents
+    - multiple_lines
+
+  numeric:
+    - monthly_charges
+    - total_charges
+
+
+outliers:
+  method: "iqr"
+  threshold: 1.5
