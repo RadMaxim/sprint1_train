@@ -25,10 +25,6 @@ FINAL_PATH = f"{DATA_DIR}/users_churn_sprint1.parquet"
 )
 def prepare_churn_dataset():
 
-    # ============================================================
-    # 1. EXTRACT
-    # ============================================================
-
     @task()
     def extract() -> str:
 

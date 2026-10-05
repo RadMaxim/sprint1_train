@@ -152,7 +152,10 @@ def users_churn_etl():
         # -------------------------------------------------
         # Удаление технических колонок
         # -------------------------------------------------
-
+        data.drop(
+            columns=["begin_date"],
+            inplace=True
+        )
         data = data.drop(
             columns=[
                 "index",
