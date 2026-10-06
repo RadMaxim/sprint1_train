@@ -798,6 +798,413 @@ def churn_training_pipeline():
                 best_model["f1_mean"]
             ),
         }
+    @task
+    def train_best_model(
+        dataset_paths: dict,
+        cv_comparison: dict,
+    ) -> dict:
+
+        best_model = cv_comparison["best_model"]
+
+        X_train = pd.read_parquet(
+            dataset_paths["x_train"]
+        )
+
+        y_train = pd.read_parquet(
+            dataset_paths["y_train"]
+        )["target"]
+
+        for column in CATEGORICAL_COLUMNS:
+            X_train[column] = X_train[column].astype(
+                "category"
+            )
+
+        MODEL_DIR.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        # =====================================================
+        # CATBOOST
+        # =====================================================
+
+        if best_model == "catboost":
+
+            cat_features = (
+                X_train
+                .select_dtypes(include=["category"])
+                .columns
+                .tolist()
+            )
+
+            model = CatBoostClassifier(
+                **CATBOOST_PARAMS
+            )
+
+            model.fit(
+                X_train,
+                y_train,
+                cat_features=cat_features,
+            )
+
+            model_path = (
+                MODEL_DIR / "catboost.cbm"
+            )
+
+            model.save_model(
+                str(model_path)
+            )
+
+            model_params = CATBOOST_PARAMS
+
+        # =====================================================
+        # LIGHTGBM
+        # =====================================================
+
+        elif best_model == "lightgbm":
+
+            model = LGBMClassifier(
+                **LIGHTGBM_PARAMS
+            )
+
+            model.fit(
+                X_train,
+                y_train,
+            )
+
+            model_path = (
+                MODEL_DIR / "lightgbm.txt"
+            )
+
+            model.booster_.save_model(
+                str(model_path)
+            )
+
+            model_params = LIGHTGBM_PARAMS
+
+        # =====================================================
+        # XGBOOST
+        # =====================================================
+
+        elif best_model == "xgboost":
+
+            class_counts = (
+                y_train.value_counts()
+            )
+
+            scale_pos_weight = (
+                class_counts[0]
+                / class_counts[1]
+            )
+
+            model_params = {
+                **XGBOOST_PARAMS,
+                "scale_pos_weight": scale_pos_weight,
+            }
+
+            model = XGBClassifier(
+                **model_params
+            )
+
+            model.fit(
+                X_train,
+                y_train,
+            )
+
+            model_path = (
+                MODEL_DIR / "xgboost.json"
+            )
+
+            model.save_model(
+                str(model_path)
+            )
+
+        else:
+
+            raise ValueError(
+                f"Unknown model: {best_model}"
+            )
+
+        print(
+            f"Best model trained: {best_model}"
+        )
+
+        return {
+            "model_name": best_model,
+            "model_path": str(model_path),
+            "model_params": model_params,
+        }
+    @task
+    def evaluate_best_model(
+        best_model: dict,
+        dataset_paths: dict,
+    ) -> dict:
+
+        model_name = best_model["model_name"]
+        model_path = best_model["model_path"]
+
+        X_val = pd.read_parquet(
+            dataset_paths["x_val"]
+        )
+
+        y_val = pd.read_parquet(
+            dataset_paths["y_val"]
+        )["target"]
+
+        for column in CATEGORICAL_COLUMNS:
+            X_val[column] = X_val[column].astype(
+                "category"
+            )
+
+        # =====================================================
+        # CATBOOST
+        # =====================================================
+
+        if model_name == "catboost":
+
+            model = CatBoostClassifier()
+            model.load_model(model_path)
+
+            y_proba = model.predict_proba(
+                X_val
+            )[:, 1]
+
+        # =====================================================
+        # LIGHTGBM
+        # =====================================================
+
+        elif model_name == "lightgbm":
+
+            import lightgbm as lgb
+
+            model = lgb.Booster(
+                model_file=model_path
+            )
+
+            y_proba = model.predict(
+                X_val
+            )
+
+        # =====================================================
+        # XGBOOST
+        # =====================================================
+
+        elif model_name == "xgboost":
+
+            model = XGBClassifier()
+            model.load_model(model_path)
+
+            y_proba = model.predict_proba(
+                X_val
+            )[:, 1]
+
+        else:
+
+            raise ValueError(
+                f"Unknown model: {model_name}"
+            )
+
+        y_pred = (
+            y_proba >= 0.5
+        ).astype(int)
+
+        metrics = calculate_metrics(
+            model_name=model_name,
+            y_true=y_val,
+            y_pred=y_pred,
+            y_proba=y_proba,
+        )
+
+        print(
+            f"Validation metrics for {model_name}:"
+        )
+
+        print(metrics)
+
+        return metrics
+    @task
+    def log_and_register_model(
+        best_model: dict,
+        evaluation_metrics: dict,
+        cv_comparison: dict,
+    ) -> dict:
+
+        import mlflow
+        import mlflow.catboost
+        import mlflow.lightgbm
+        import mlflow.xgboost
+
+        from catboost import CatBoostClassifier
+        from lightgbm import Booster
+        from xgboost import XGBClassifier
+
+        mlflow.set_tracking_uri(
+            "http://host.docker.internal:5000"
+        )
+
+        mlflow.set_experiment(
+            "Model Compare"
+        )
+
+        model_name = best_model["model_name"]
+        model_path = best_model["model_path"]
+        model_params = best_model["model_params"]
+
+        registered_model_name = "churn_model"
+
+        with mlflow.start_run(
+            run_name=f"{model_name}_best"
+        ) as run:
+
+            # =====================================================
+            # TAGS
+            # =====================================================
+
+            mlflow.set_tag(
+                "model",
+                model_name,
+            )
+
+            mlflow.set_tag(
+                "selected_by",
+                "cross_validation",
+            )
+
+            # =====================================================
+            # PARAMS
+            # =====================================================
+
+            mlflow.log_params(
+                model_params
+            )
+
+            mlflow.log_params(
+                {
+                    "split_test_size":
+                        SPLIT_PARAMS["test_size"],
+
+                    "split_random_state":
+                        SPLIT_PARAMS["random_state"],
+
+                    "cv_n_splits":
+                        CV_PARAMS["n_splits"],
+                }
+            )
+
+            # =====================================================
+            # VALIDATION METRICS
+            # =====================================================
+
+            mlflow.log_metrics(
+                {
+                    "val_f1":
+                        evaluation_metrics["f1"],
+
+                    "val_roc_auc":
+                        evaluation_metrics["roc_auc"],
+
+                    "val_precision":
+                        evaluation_metrics["precision"],
+
+                    "val_recall":
+                        evaluation_metrics["recall"],
+
+                    "val_pr_auc":
+                        evaluation_metrics["pr_auc"],
+                }
+            )
+
+            # =====================================================
+            # CROSS-VALIDATION METRICS
+            # =====================================================
+
+            mlflow.log_metrics(
+                {
+                    "cv_pr_auc":
+                        cv_comparison["best_pr_auc"],
+
+                    "cv_roc_auc":
+                        cv_comparison["best_roc_auc"],
+
+                    "cv_f1":
+                        cv_comparison["best_f1"],
+                }
+            )
+
+            # =====================================================
+            # CONFIG
+            # =====================================================
+
+            mlflow.log_artifact(
+                str(PARAMS_PATH),
+                artifact_path="config",
+            )
+
+            # =====================================================
+            # MODEL + MODEL REGISTRY
+            # =====================================================
+
+            if model_name == "catboost":
+
+                model = CatBoostClassifier()
+                model.load_model(model_path)
+
+                model_info = (
+                    mlflow.catboost.log_model(
+                        cb_model=model,
+                        name="model",
+                        registered_model_name=registered_model_name,
+                    )
+                )
+
+            elif model_name == "lightgbm":
+
+                model = Booster(
+                    model_file=model_path
+                )
+
+                model_info = (
+                    mlflow.lightgbm.log_model(
+                        lgb_model=model,
+                        name="model",
+                        registered_model_name=registered_model_name,
+                    )
+                )
+
+            elif model_name == "xgboost":
+
+                model = XGBClassifier()
+                model.load_model(model_path)
+
+                model_info = (
+                    mlflow.xgboost.log_model(
+                        xgb_model=model,
+                        name="model",
+                        registered_model_name=registered_model_name,
+                    )
+                )
+
+            else:
+
+                raise ValueError(
+                    f"Unknown model: {model_name}"
+                )
+
+            print(
+                f"MLflow logging completed: {model_name}"
+            )
+
+            print(
+                f"Registered model: "
+                f"{registered_model_name}"
+            )
+
+            return {
+                "run_id": run.info.run_id,
+                "model_name": model_name,
+                "registered_model_name":
+                    registered_model_name,
+            }
     dataset_paths = split_data()
     catboost_cv = cross_validate_catboost(
     dataset_paths
@@ -816,55 +1223,32 @@ def churn_training_pipeline():
         lightgbm_cv,
         xgboost_cv,
     )
-    catboost_model = train_catboost(dataset_paths)
-
-    lightgbm_model = train_lightgbm(dataset_paths)
-
-    xgboost_model = train_xgboost(dataset_paths)
-
     # ========================================================
-    # EVALUATE
-    # ========================================================
+# TRAIN
+# ========================================================
 
-    catboost_metrics = evaluate_catboost(
-        catboost_model,
+    best_model = train_best_model(
+        dataset_paths,
+        cv_comparison,
+    )
+
+# ========================================================
+# EVALUATE
+# ========================================================
+
+    best_metrics = evaluate_best_model(
+        best_model,
         dataset_paths,
     )
 
-    lightgbm_metrics = evaluate_lightgbm(
-        lightgbm_model,
-        dataset_paths,
-    )
+# ========================================================
+# MLFLOW + MODEL REGISTRY
+# ========================================================
 
-    xgboost_metrics = evaluate_xgboost(
-        xgboost_model,
-        dataset_paths,
-    )
-
-
-    # ========================================================
-    # MLFLOW
-    # ========================================================
-
-    log_mlflow(
-        "catboost",
-        catboost_model,
-        CATBOOST_PARAMS,
-        catboost_metrics,
-    )
-
-    log_mlflow(
-        "lightgbm",
-        lightgbm_model,
-        LIGHTGBM_PARAMS,
-        lightgbm_metrics,
-    )
-
-    log_mlflow(
-        "xgboost",
-        xgboost_model,
-        XGBOOST_PARAMS,
-        xgboost_metrics,
+    mlflow_result = log_and_register_model(
+        best_model,
+        best_metrics,
+        cv_comparison,
     )
 
 

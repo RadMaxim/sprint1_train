@@ -258,3 +258,4 @@ Cross-validation используется для предварительног�
 
 Следующий этап — сравнение моделей на test set и регистрация лучшей версии в MLflow Model Registry.
 ![alt text](image-1.png)
+![alt text](image-2.png)
