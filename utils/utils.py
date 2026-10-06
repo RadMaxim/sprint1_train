@@ -1,22 +1,13 @@
 import pandas as pd
 
 
-def remove_duplicates(
-    data: pd.DataFrame
-) -> pd.DataFrame:
+def remove_duplicates(data: pd.DataFrame) -> pd.DataFrame:
 
     rows_before = len(data)
 
-    data = (
-        data
-        .drop_duplicates()
-        .copy()
-    )
+    data = data.drop_duplicates().copy()
 
-    print(
-        f"Duplicates removed: "
-        f"{rows_before - len(data)}"
-    )
+    print(f"Duplicates removed: {rows_before - len(data)}")
 
     return data
 
@@ -27,27 +18,15 @@ def cast_types(
     numeric_columns: list[str],
 ) -> pd.DataFrame:
 
-    data["senior_citizen"] = (
-        data["senior_citizen"]
-        .astype("int8")
-    )
+    data["senior_citizen"] = data["senior_citizen"].astype("int8")
 
-    data["target"] = (
-        data["target"]
-        .astype("int8")
-    )
+    data["target"] = data["target"].astype("int8")
 
     for col in numeric_columns:
-        data[col] = (
-            data[col]
-            .astype("float32")
-        )
+        data[col] = data[col].astype("float32")
 
     for col in categorical_columns:
-        data[col] = (
-            data[col]
-            .astype("category")
-        )
+        data[col] = data[col].astype("category")
 
     return data
 
@@ -59,68 +38,32 @@ def fill_missing_values(
 ) -> pd.DataFrame:
 
     for col in categorical_columns:
-
         if data[col].isna().any():
+            mode_value = data[col].mode(dropna=True).iloc[0]
 
-            mode_value = (
-                data[col]
-                .mode(dropna=True)
-                .iloc[0]
-            )
+            data[col] = data[col].fillna(mode_value)
 
-            data[col] = (
-                data[col]
-                .fillna(mode_value)
-            )
-
-            print(
-                f"{col}: "
-                f"filled with mode = "
-                f"{mode_value}"
-            )
+            print(f"{col}: filled with mode = {mode_value}")
 
     for col in numeric_columns:
-
         if data[col].isna().any():
+            median_value = data[col].median()
 
-            median_value = (
-                data[col]
-                .median()
-            )
+            data[col] = data[col].fillna(median_value)
 
-            data[col] = (
-                data[col]
-                .fillna(median_value)
-            )
-
-            print(
-                f"{col}: "
-                f"filled with median = "
-                f"{median_value:.2f}"
-            )
+            print(f"{col}: filled with median = {median_value:.2f}")
 
     return data
 
 
-def validate_missing_values(
-    data: pd.DataFrame
-) -> None:
+def validate_missing_values(data: pd.DataFrame) -> None:
 
-    missing_count = (
-        data.isna()
-        .sum()
-        .sum()
-    )
+    missing_count = data.isna().sum().sum()
 
-    print(
-        f"Missing values: "
-        f"{missing_count}"
-    )
+    print(f"Missing values: {missing_count}")
 
     if missing_count > 0:
-        raise ValueError(
-            "Dataset contains missing values"
-        )
+        raise ValueError("Dataset contains missing values")
 
 
 def remove_outliers_iqr(
@@ -135,48 +78,23 @@ def remove_outliers_iqr(
     )
 
     for col in numeric_columns:
-
         q1 = data[col].quantile(0.25)
         q3 = data[col].quantile(0.75)
 
         iqr = q3 - q1
 
-        lower_bound = (
-            q1 - threshold * iqr
-        )
+        lower_bound = q1 - threshold * iqr
 
-        upper_bound = (
-            q3 + threshold * iqr
-        )
+        upper_bound = q3 + threshold * iqr
 
-        col_outliers = (
-            (data[col] < lower_bound)
-            |
-            (data[col] > upper_bound)
-        )
+        col_outliers = (data[col] < lower_bound) | (data[col] > upper_bound)
 
-        print(
-            f"{col}: "
-            f"{col_outliers.sum()} outliers, "
-            f"bounds: "
-            f"{lower_bound:.2f} - "
-            f"{upper_bound:.2f}"
-        )
+        print(f"{col}: {col_outliers.sum()} outliers, bounds: {lower_bound:.2f} - {upper_bound:.2f}")
 
         outlier_mask |= col_outliers
 
-    total_outliers = int(
-        outlier_mask.sum()
-    )
+    total_outliers = int(outlier_mask.sum())
 
-    print(
-        f"Total rows with outliers: "
-        f"{total_outliers}"
-    )
+    print(f"Total rows with outliers: {total_outliers}")
 
-    return (
-        data.loc[
-            ~outlier_mask
-        ]
-        .copy()
-    )
+    return data.loc[~outlier_mask].copy()

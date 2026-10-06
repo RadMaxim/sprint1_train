@@ -2,11 +2,11 @@ import os
 
 import pandas as pd
 import pendulum
-# dags/churn.py
-from steps.messages import send_telegram_success_message
 from airflow.decorators import dag, task
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 
+# dags/churn.py
+from steps.messages import send_telegram_success_message
 
 DATA_DIR = "/opt/airflow/data"
 
@@ -21,16 +21,14 @@ FINAL_PATH = f"{DATA_DIR}/users_churn_sprint1.parquet"
     catchup=False,
     tags=["ETL"],
     dag_id="sprint1_r",
-    on_success_callback=send_telegram_success_message
+    on_success_callback=send_telegram_success_message,
 )
 def prepare_churn_dataset():
 
     @task()
     def extract() -> str:
 
-        hook = PostgresHook(
-            postgres_conn_id="source_db"
-        )
+        hook = PostgresHook(postgres_conn_id="source_db")
 
         engine = hook.get_sqlalchemy_engine()
 
@@ -72,20 +70,11 @@ def prepare_churn_dataset():
             ON ph.customer_id = c.customer_id
         """
 
-        data = pd.read_sql(
-            sql,
-            engine
-        )
+        data = pd.read_sql(sql, engine)
 
-        os.makedirs(
-            os.path.dirname(RAW_PATH),
-            exist_ok=True
-        )
+        os.makedirs(os.path.dirname(RAW_PATH), exist_ok=True)
 
-        data.to_parquet(
-            RAW_PATH,
-            index=False
-        )
+        data.to_parquet(RAW_PATH, index=False)
 
         print(f"Raw dataset saved: {RAW_PATH}")
         print(f"Rows: {len(data)}")
@@ -99,35 +88,19 @@ def prepare_churn_dataset():
     @task()
     def transform(input_path: str) -> str:
 
-        data = pd.read_parquet(
-            input_path
-        )
+        data = pd.read_parquet(input_path)
 
-        data["target"] = (
-            data["end_date"] != "No"
-        ).astype(int)
+        data["target"] = (data["end_date"] != "No").astype(int)
 
-        data["end_date"] = data["end_date"].replace(
-            {"No": None}
-        )
+        data["end_date"] = data["end_date"].replace({"No": None})
 
-        os.makedirs(
-            os.path.dirname(TRANSFORMED_PATH),
-            exist_ok=True
-        )
+        os.makedirs(os.path.dirname(TRANSFORMED_PATH), exist_ok=True)
 
-        data.to_parquet(
-            TRANSFORMED_PATH,
-            index=False
-        )
+        data.to_parquet(TRANSFORMED_PATH, index=False)
 
-        print(
-            f"Transformed dataset saved: {TRANSFORMED_PATH}"
-        )
+        print(f"Transformed dataset saved: {TRANSFORMED_PATH}")
 
-        print(
-            f"Rows: {len(data)}"
-        )
+        print(f"Rows: {len(data)}")
 
         return TRANSFORMED_PATH
 
@@ -138,27 +111,14 @@ def prepare_churn_dataset():
     @task()
     def load(input_path: str) -> str:
 
-        data = pd.read_parquet(
-            input_path
-        )
+        data = pd.read_parquet(input_path)
 
-        os.makedirs(
-            os.path.dirname(FINAL_PATH),
-            exist_ok=True
-        )
-        data.to_parquet(
-                    FINAL_PATH,
-                    index=False
-                )
-        
+        os.makedirs(os.path.dirname(FINAL_PATH), exist_ok=True)
+        data.to_parquet(FINAL_PATH, index=False)
 
-        print(
-            f"Final dataset saved: {FINAL_PATH}"
-        )
+        print(f"Final dataset saved: {FINAL_PATH}")
 
-        print(
-            f"Rows: {len(data)}"
-        )
+        print(f"Rows: {len(data)}")
 
         return FINAL_PATH
 
@@ -168,13 +128,9 @@ def prepare_churn_dataset():
 
     raw_path = extract()
 
-    transformed_path = transform(
-        raw_path
-    )
+    transformed_path = transform(raw_path)
 
-    load(
-        transformed_path
-    )
+    load(transformed_path)
 
 
 prepare_churn_dataset()

@@ -1,0 +1,92 @@
+data:
+  dir: "/opt/airflow/data"
+
+  raw_path: "/opt/airflow/data/raw/users_churn_raw.parquet"
+  transformed_path: "/opt/airflow/data/processed/users_churn_transformed.parquet"
+  final_path: "/opt/airflow/data/users_churn_sprint1.parquet"
+
+
+connections:
+  source_db: "source_db"
+
+
+features:
+  categorical:
+    - type
+    - paperless_billing
+    - payment_method
+    - internet_service
+    - online_security
+    - online_backup
+    - device_protection
+    - tech_support
+    - streaming_tv
+    - streaming_movies
+    - gender
+    - partner
+    - dependents
+    - multiple_lines
+
+  numeric:
+    - monthly_charges
+    - total_charges
+
+
+outliers:
+  method: "iqr"
+  threshold: 1.5
+
+
+split:
+  test_size: 0.25
+  random_state: 42
+
+
+cross_validation:
+  n_splits: 5
+  shuffle: true
+  random_state: 42
+
+
+models:
+
+  catboost:
+    iterations: 500
+    learning_rate: 0.05
+    depth: 6
+    loss_function: "Logloss"
+    eval_metric: "AUC"
+    auto_class_weights: "Balanced"
+    random_seed: 42
+    verbose: 0
+
+  lightgbm:
+    n_estimators: 500
+    learning_rate: 0.05
+    max_depth: 6
+    class_weight: "balanced"
+    random_state: 42
+
+  xgboost:
+    n_estimators: 500
+    learning_rate: 0.05
+    max_depth: 6
+    objective: "binary:logistic"
+    eval_metric: "auc"
+    random_state: 42
+    tree_method: "hist"
+    enable_categorical: true
+
+artifacts:
+  model_dir: "/opt/airflow/data/models"
+  model_path: "/opt/airflow/data/models/churn_catboost.cbm"
+
+  train_dir: "/opt/airflow/data/train"
+  x_train_path: "/opt/airflow/data/train/X_train.parquet"
+  x_val_path: "/opt/airflow/data/train/X_val.parquet"
+  y_train_path: "/opt/airflow/data/train/y_train.parquet"
+  y_val_path: "/opt/airflow/data/train/y_val.parquet"
+
+  metrics_dir: "/opt/airflow/data/metrics"
+  metrics_path: "/opt/airflow/data/metrics/churn_metrics.json"
+  cv_metrics_path: "/opt/airflow/data/metrics/churn_cv_metrics.json"

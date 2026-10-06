@@ -1,21 +1,19 @@
+import os
 from datetime import datetime
 from pathlib import Path
-import os
 
 import pandas as pd
 import yaml
-
-from airflow.sdk import dag, task
 from airflow.providers.postgres.hooks.postgres import PostgresHook
+from airflow.sdk import dag, task
 
 from utils.utils import (
-    remove_duplicates,
     cast_types,
     fill_missing_values,
-    validate_missing_values,
+    remove_duplicates,
     remove_outliers_iqr,
+    validate_missing_values,
 )
-
 
 # ---------------------------------------------------------
 # Загрузка параметров
@@ -69,9 +67,7 @@ def users_churn_etl():
             exist_ok=True,
         )
 
-        hook = PostgresHook(
-            postgres_conn_id=SOURCE_CONN_ID
-        )
+        hook = PostgresHook(postgres_conn_id=SOURCE_CONN_ID)
 
         query = """
         SELECT
@@ -97,30 +93,21 @@ def users_churn_etl():
             ON ph.customer_id = c.customer_id
         """
 
-        engine = (
-            hook
-            .get_sqlalchemy_engine()
-        )
+        engine = hook.get_sqlalchemy_engine()
 
         data = pd.read_sql(
             query,
             engine,
         )
 
-        print(
-            f"Extracted shape: "
-            f"{data.shape}"
-        )
+        print(f"Extracted shape: {data.shape}")
 
         data.to_parquet(
             RAW_PATH,
             index=False,
         )
 
-        print(
-            f"Raw dataset saved to: "
-            f"{RAW_PATH}"
-        )
+        print(f"Raw dataset saved to: {RAW_PATH}")
 
         return RAW_PATH
 
@@ -129,33 +116,21 @@ def users_churn_etl():
     # =====================================================
 
     @task
-    def transform(
-        input_path: str
-    ) -> str:
+    def transform(input_path: str) -> str:
 
         os.makedirs(
-            os.path.dirname(
-                TRANSFORMED_PATH
-            ),
+            os.path.dirname(TRANSFORMED_PATH),
             exist_ok=True,
         )
 
-        data = pd.read_parquet(
-            input_path
-        )
+        data = pd.read_parquet(input_path)
 
-        print(
-            f"Initial shape: "
-            f"{data.shape}"
-        )
+        print(f"Initial shape: {data.shape}")
 
         # -------------------------------------------------
         # Удаление технических колонок
         # -------------------------------------------------
-        data.drop(
-            columns=["begin_date"],
-            inplace=True
-        )
+        data.drop(columns=["begin_date"], inplace=True)
         data = data.drop(
             columns=[
                 "index",
@@ -168,9 +143,7 @@ def users_churn_etl():
         # Создание target
         # -------------------------------------------------
 
-        data["target"] = (
-            data["end_date"] != "No"
-        ).astype("int8")
+        data["target"] = (data["end_date"] != "No").astype("int8")
 
         data = data.drop(
             columns=[
@@ -182,9 +155,7 @@ def users_churn_etl():
         # Удаление дубликатов
         # -------------------------------------------------
 
-        data = remove_duplicates(
-            data
-        )
+        data = remove_duplicates(data)
 
         # -------------------------------------------------
         # Приведение типов
@@ -210,9 +181,7 @@ def users_churn_etl():
         # Проверка пропусков
         # -------------------------------------------------
 
-        validate_missing_values(
-            data
-        )
+        validate_missing_values(data)
 
         # -------------------------------------------------
         # Поиск и удаление выбросов
@@ -224,19 +193,11 @@ def users_churn_etl():
             threshold=IQR_THRESHOLD,
         )
 
-        print(
-            f"Final shape after transform: "
-            f"{data.shape}"
-        )
+        print(f"Final shape after transform: {data.shape}")
 
-        print(
-            "Target distribution:"
-        )
+        print("Target distribution:")
 
-        print(
-            data["target"]
-            .value_counts()
-        )
+        print(data["target"].value_counts())
 
         # -------------------------------------------------
         # Сохранение transformed
@@ -247,10 +208,7 @@ def users_churn_etl():
             index=False,
         )
 
-        print(
-            f"Transformed dataset saved to: "
-            f"{TRANSFORMED_PATH}"
-        )
+        print(f"Transformed dataset saved to: {TRANSFORMED_PATH}")
 
         return TRANSFORMED_PATH
 
@@ -259,35 +217,23 @@ def users_churn_etl():
     # =====================================================
 
     @task
-    def load(
-        input_path: str
-    ) -> str:
+    def load(input_path: str) -> str:
 
         os.makedirs(
-            os.path.dirname(
-                FINAL_PATH
-            ),
+            os.path.dirname(FINAL_PATH),
             exist_ok=True,
         )
 
-        data = pd.read_parquet(
-            input_path
-        )
+        data = pd.read_parquet(input_path)
 
         data.to_parquet(
             FINAL_PATH,
             index=False,
         )
 
-        print(
-            f"Final dataset saved to: "
-            f"{FINAL_PATH}"
-        )
+        print(f"Final dataset saved to: {FINAL_PATH}")
 
-        print(
-            f"Final shape: "
-            f"{data.shape}"
-        )
+        print(f"Final shape: {data.shape}")
 
         return FINAL_PATH
 
@@ -297,13 +243,9 @@ def users_churn_etl():
 
     raw_path = extract()
 
-    transformed_path = transform(
-        raw_path
-    )
+    transformed_path = transform(raw_path)
 
-    load(
-        transformed_path
-    )
+    load(transformed_path)
 
 
 users_churn_etl()

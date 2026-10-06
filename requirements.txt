@@ -1,6 +1,9 @@
 apache-airflow-providers-telegram
 catboost
+lightgbm
+xgboost
 scikit-learn
+mlflow
+pandas
 pyarrow
 pyyaml
-mlflow
